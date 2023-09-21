@@ -1,7 +1,0 @@
-build
-check-manifest
-coverage
-Sphinx
-tox
-tox-gh
-twine

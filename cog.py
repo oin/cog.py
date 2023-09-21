@@ -1,6 +1,39 @@
-""" Cog content generation tool.
-"""
+# Cog was written by Ned Batchelder (ned@nedbatchelder.com).
+# 
+# Contributions have been made by:
+# 	Alexander Belchenko
+# 	Anders Hovmöller
+# 	Blake Winton
+# 	Doug Hellmann
+# 	Daniel Murdin
+# 	Hugh Perkins
+# 	Jean-François Giraud
+# 	Petr Gladkiy
 
+# MIT License
+# Copyright (c) 2004-2023 Ned Batchelder
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+import sys
+assert sys.version_info => (3, 7)
+import re
 import copy
 import getopt
 import glob
@@ -14,7 +47,96 @@ import sys
 import traceback
 import types
 
-from .whiteutils import commonPrefix, reindentBlock, whitePrefix
+def whitePrefix(strings):
+    """ Determine the whitespace prefix common to all non-blank lines
+        in the argument list.
+    """
+    # Remove all blank lines from the list
+    strings = [s for s in strings if s.strip() != '']
+
+    if not strings: return ''
+
+    # Find initial whitespace chunk in the first line.
+    # This is the best prefix we can hope for.
+    pat = r'\s*'
+    if isinstance(strings[0], bytes):
+        pat = pat.encode("utf-8")
+    prefix = re.match(pat, strings[0]).group(0)
+
+    # Loop over the other strings, keeping only as much of
+    # the prefix as matches each string.
+    for s in strings:
+        for i in range(len(prefix)):
+            if prefix[i] != s[i]:
+                prefix = prefix[:i]
+                break
+    return prefix
+
+def reindentBlock(lines, newIndent=''):
+    """ Take a block of text as a string or list of lines.
+        Remove any common whitespace indentation.
+        Re-indent using newIndent, and return it as a single string.
+    """
+    sep, nothing = '\n', ''
+    if isinstance(lines, bytes):
+        sep, nothing = b'\n', b''
+    if isinstance(lines, (bytes, str)):
+        lines = lines.split(sep)
+    oldIndent = whitePrefix(lines)
+    outLines = []
+    for l in lines:
+        if oldIndent:
+            l = l.replace(oldIndent, nothing, 1)
+        if l and newIndent:
+            l = newIndent + l
+        outLines.append(l)
+    return sep.join(outLines)
+
+def commonPrefix(strings):
+    """ Find the longest string that is a prefix of all the strings.
+    """
+    if not strings:
+        return ''
+    prefix = strings[0]
+    for s in strings:
+        if len(s) < len(prefix):
+            prefix = prefix[:len(s)]
+        if not prefix:
+            return ''
+        for i in range(len(prefix)):
+            if prefix[i] != s[i]:
+                prefix = prefix[:i]
+                break
+    return prefix
+
+def makeFiles(d, basedir='.'):
+    """ Create files from the dictionary `d`, in the directory named by `basedir`.
+    """
+    for name, contents in d.items():
+        child = os.path.join(basedir, name)
+        if isinstance(contents, (bytes, str)):
+            mode = "w"
+            if isinstance(contents, bytes):
+                mode += "b"
+            with open(child, mode) as f:
+                f.write(reindentBlock(contents))
+        else:
+            if not os.path.exists(child):
+                os.mkdir(child)
+            makeFiles(contents, child)
+
+def removeFiles(d, basedir='.'):
+    """ Remove the files created by makeFiles.
+        Directories are removed if they are empty.
+    """
+    for name, contents in d.items():
+        child = os.path.join(basedir, name)
+        if isinstance(contents, (bytes, str)):
+            os.remove(child)
+        else:
+            removeFiles(contents, child)
+            if not os.listdir(child):
+                os.rmdir(child)
 
 __version__ = "4.0.0.dev2"
 
@@ -846,3 +968,6 @@ def find_cog_source(frame_summary, prologue):
 def main():
     """Main function for entry_points to use."""
     return Cog().main(sys.argv)
+
+if __name__ == '__main__':
+	sys.exit(main())
